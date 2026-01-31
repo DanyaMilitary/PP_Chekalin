@@ -1,4 +1,3 @@
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -11,6 +10,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * МОДЕЛЬ ДАННЫХ
@@ -29,6 +29,20 @@ class Transaction {
         this.description = description; this.amount = amount;
         this.isIncome = isIncome; this.member = member;
     }
+
+    // --- Добавленные геттеры для исправления ошибок ---
+    public boolean isIncome() {
+        return isIncome;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+    // --- Конец добавленных геттеров ---
 }
 
 /**
@@ -129,7 +143,7 @@ public class FamilyBudgetApp extends JFrame {
     private final String[] allCats = {"Все категории", "Зарплата", "Фриланс", "Продукты", "Жилье", "Транспорт", "Развлечения", "Здоровье", "Другое"};
 
     public FamilyBudgetApp() {
-        setTitle("Учет семейного бюджета v3.0");
+        setTitle("Учет семейного бюджета");
         setSize(1250, 800);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -213,6 +227,8 @@ public class FamilyBudgetApp extends JFrame {
         sidePanel.add(createBtn("📊 Excel Экспорт", e -> exportCSV()));
         sidePanel.add(Box.createVerticalStrut(10));
         sidePanel.add(createBtn("👥 Семья", e -> showMemberManager()));
+        sidePanel.add(Box.createVerticalStrut(10)); // Добавляем отступ перед новой кнопкой
+        sidePanel.add(createBtn("📈 Анализ бюджета", e -> showBudgetAnalysis())); // Новая кнопка
 
         add(sidePanel, BorderLayout.EAST);
     }
@@ -372,6 +388,67 @@ public class FamilyBudgetApp extends JFrame {
             } catch (IOException e) { e.printStackTrace(); }
         }
     }
+
+    // --- НОВЫЙ МЕТОД ДЛЯ АНАЛИЗА БЮДЖЕТА ---
+    private void showBudgetAnalysis() {
+        JDialog dialog = new JDialog(this, "Анализ бюджета", true);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setSize(500, 600);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel contentPanel = new JPanel(new GridLayout(0, 1, 5, 5)); // Используем GridLayout для вертикального расположения
+        contentPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        YearMonth selectedMonth = (YearMonth) comboMonth.getSelectedItem();
+        List<Transaction> transactionsForMonth = db.getTransactions().stream()
+                .filter(t -> YearMonth.from(t.date).equals(selectedMonth))
+                .collect(Collectors.toList());
+
+        double totalIncome = transactionsForMonth.stream()
+                .filter(Transaction::isIncome) // Исправлено: теперь это метод
+                .mapToDouble(Transaction::getAmount) // Исправлено: теперь это метод
+                .sum();
+
+        double totalExpense = transactionsForMonth.stream()
+                .filter(t -> !t.isIncome()) // Исправлено: теперь это метод
+                .mapToDouble(Transaction::getAmount) // Исправлено: теперь это метод
+                .sum();
+
+        double overallBalance = totalIncome - totalExpense;
+
+        // Общий баланс
+        contentPanel.add(new JLabel("<html><b>Общий баланс:</b> " + String.format("%.2f", overallBalance) + "</html>"));
+        // Всего доходов
+        contentPanel.add(new JLabel("<html><b>Всего доходов:</b> " + String.format("%.2f", totalIncome) + "</html>"));
+        // Всего расходов
+        contentPanel.add(new JLabel("<html><b>Всего расходов:</b> " + String.format("%.2f", totalExpense) + "</html>"));
+
+        // Доходы по категориям
+        contentPanel.add(new JLabel("<html><b>Доходы по категориям:</b></html>"));
+        Map<String, Double> incomeByCategory = transactionsForMonth.stream()
+                .filter(Transaction::isIncome) // Исправлено: теперь это метод
+                .collect(Collectors.groupingBy(Transaction::getCategory, Collectors.summingDouble(Transaction::getAmount))); // Исправлено: теперь это методы
+
+        incomeByCategory.forEach((category, amount) -> {
+            double percentage = (totalIncome > 0) ? (amount / totalIncome) * 100 : 0;
+            contentPanel.add(new JLabel("  " + category + ": " + String.format("%.2f", amount) + " (" + String.format("%.1f", percentage) + "%)"));
+        });
+
+        // Расходы по категориям
+        contentPanel.add(new JLabel("<html><b>Расходы по категориям:</b></html>"));
+        Map<String, Double> expenseByCategory = transactionsForMonth.stream()
+                .filter(t -> !t.isIncome()) // Исправлено: теперь это метод
+                .collect(Collectors.groupingBy(Transaction::getCategory, Collectors.summingDouble(Transaction::getAmount))); // Исправлено: теперь это методы
+
+        expenseByCategory.forEach((category, amount) -> {
+            double percentage = (totalExpense > 0) ? (amount / totalExpense) * 100 : 0;
+            contentPanel.add(new JLabel("  " + category + ": " + String.format("%.2f", amount) + " (" + String.format("%.1f", percentage) + "%)"));
+        });
+
+        dialog.add(contentPanel, BorderLayout.CENTER);
+        dialog.setVisible(true);
+    }
+
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception e) {}
